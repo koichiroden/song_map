@@ -7,6 +7,17 @@
 builder/index.html  ──(曲を選ぶ・地名を直す)──▶  configs/湘南.json  ──▶  python make_video.py  ──▶  out/湘南_gotouchi.mp4
 ```
 
+## いちばん簡単な使い方（ブラウザ）
+
+```bash
+python3 app.py
+```
+
+表示された `http://localhost:8000`（WSLやほかの端末からは `http://172.xx.xx.xx:8000` など）をブラウザで開きます。
+曲を選んで「動画を作る」を押すと、このPCで書き出しが進み、終わったらその場で再生・ダウンロードできます。
+「地名チェック」「プレビュー画像」で書き出す前に確認、「configs に保存」で config を残せます。
+追加のライブラリは不要です（Python 標準のサーバーを使います）。止めるときは Ctrl+C。
+
 ## 使い方
 
 ### 1. セットアップ（Ubuntu）
@@ -100,6 +111,7 @@ python make_video.py configs/湘南.json                    # 動画を書き出
 ## ファイル構成
 
 ```
+app.py                 ブラウザで使うスタジオ（ローカルサーバー）
 make_video.py          動画を書き出すコマンド
 gotouchi/world.py      地名 → 点・エリア・線
 gotouchi/render.py     描画（pycairo → ffmpeg）

@@ -108,6 +108,17 @@ class Video:
         if self.verbose:
             self.report()
 
+    def summary(self):
+        """地名の解決結果（Web画面用）"""
+        return {
+            "header": self.header_title, "songs_n": len(self.songs), "places_n": self.n_places,
+            "seconds": round(self.total, 1),
+            "focus": f"{self.focus.name}（{self.focus.source}）" if self.focus else "",
+            "songs": [{"title": s["title"], "artist": s.get("artist", ""),
+                       "places": [{"label": f.label, "kind": f.kind, "source": f.source} for f in s["feats"]]}
+                      for s in self.songs],
+        }
+
     def report(self):
         print(f"■ {self.header_title}  {len(self.songs)}曲・{self.n_places}地名・{self.total:.1f}秒")
         if self.focus: print(f"  題名のエリア: {self.focus.name} ({self.focus.source})")
@@ -607,7 +618,7 @@ class Video:
         self.draw_header(ctx, f"{M}曲")
 
     # ============================================================ 出力
-    def write(self, out, preview=None):
+    def write(self, out, preview=None, on_progress=None):
         surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, self.W, self.H)
         ctx = cairo.Context(surf)
         if preview is not None:
@@ -625,9 +636,14 @@ class Video:
         for fr in range(n):
             self.render(fr / self.FPS, ctx); surf.flush()
             p.stdin.write(bytes(surf.get_data()))
+            if on_progress and fr % self.FPS == 0:
+                on_progress(fr / n)
             if self.verbose and fr % (self.FPS*5) == 0:
                 print(f"  {fr/self.FPS:5.1f} / {self.total:.1f} 秒", flush=True)
         p.stdin.close(); p.wait()
+        if p.returncode != 0:
+            raise RuntimeError("ffmpeg が失敗しました（ffmpeg が入っているか確認してください）")
+        if on_progress: on_progress(1.0)
         return out
 
 

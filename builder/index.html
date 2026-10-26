@@ -127,6 +127,21 @@ pre.json{margin:0;background:var(--sunk);border:1px solid var(--line);border-rad
 .import textarea{width:100%;min-height:90px;background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:8px;font-family:var(--f-mono);font-size:12px}
 .legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--mute);padding:10px 16px 0}
 .legend i{display:inline-block;width:18px;height:4px;border-radius:2px;vertical-align:middle;margin-right:4px}
+.studio{border:1px solid var(--accent);border-radius:12px;padding:12px;display:grid;gap:10px;background:var(--accent-soft)}
+.studio h3{margin:0;font-size:14px;display:flex;align-items:center;gap:8px}
+.studio h3 .dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.bar{height:10px;border-radius:5px;background:var(--sunk);border:1px solid var(--line);overflow:hidden}
+.bar>i{display:block;height:100%;width:0;background:var(--accent);transition:width .4s}
+.thumbs{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.thumbs img{height:220px;border-radius:8px;border:1px solid var(--line);flex:none;cursor:zoom-in}
+.chk{display:grid;gap:4px;font-size:12px;max-height:260px;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px}
+.chk b{font-size:13px}
+.chk .bad{color:var(--warn)}
+.vids{display:grid;gap:6px}
+.vid{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px}
+.vid span{flex:1 1 200px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vid a{color:var(--accent);font-weight:700;text-decoration:none}
+video.player{width:100%;max-width:300px;border-radius:10px;border:1px solid var(--line);background:#000}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
@@ -175,6 +190,21 @@ pre.json{margin:0;background:var(--sunk);border:1px solid var(--line);border-rad
         <button class="btn ghost" id="save" hidden>JSON を保存</button>
         <span class="toast" id="toast" role="status"></span>
       </div>
+      <section class="studio" id="studio" hidden>
+        <h3><span class="dot"></span>動画をつくる（このPCで書き出し）</h3>
+        <div class="outbar">
+          <button class="btn plain" id="sCheck">地名チェック</button>
+          <button class="btn plain" id="sPreview">プレビュー画像</button>
+          <button class="btn" id="sRender">動画を作る</button>
+          <button class="btn plain" id="sSave">configs に保存</button>
+          <select id="sLoad" aria-label="configs から開く" style="background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:7px 8px"><option value="">configs から開く…</option></select>
+          <span class="toast" id="sMsg" role="status"></span>
+        </div>
+        <div id="sProg" hidden><div class="bar"><i id="sBar"></i></div><div class="note" id="sState"></div></div>
+        <div id="sResult"></div>
+        <div class="thumbs" id="sThumbs"></div>
+        <div class="field"><span>書き出した動画</span><div class="vids" id="sVids"></div></div>
+      </section>
       <div class="cmd" id="cmd"></div>
       <pre class="json" id="json"></pre>
       <details class="import">
@@ -440,4 +470,81 @@ $("importBtn").onclick = () => { try { applyConfig(JSON.parse($("importText").va
 fillSpots();
 if (load()) { $("title").value = state.title || ""; $("credit").value = state.credit || ""; $("songSec").value = state.songSec || 5.5; $("focus").value = state.focus || ""; renderShelf(); renderOrder(); renderOut(); }
 else applyConfig(SAMPLE);
+
+/* ---------------- スタジオ（app.py で開いたときだけ） ---------------- */
+(async function studio(){
+  let ok = false;
+  try { const r = await fetch("api/ping", {cache:"no-store"}); ok = r.ok; } catch(e){}
+  if (!ok) return;
+  $("studio").hidden = false;
+  $("cmd").hidden = true; $("save").hidden = true;
+  const post = async (url) => {
+    const r = await fetch(url, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(buildConfig())});
+    const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j;
+  };
+  const busy = (on, msg) => { ["sCheck","sPreview","sRender","sSave"].forEach(id => $(id).disabled = on); $("sMsg").textContent = msg || ""; };
+  const MARK = {point:"●", area:"▢", line:"━", none:"×"};
+  function showSummary(sm){
+    if (!sm) return;
+    const bad = sm.songs.reduce((n,s) => n + s.places.filter(p => p.kind==="none" && !/出さない/.test(p.source)).length, 0);
+    $("sResult").innerHTML = `<div class="chk"><b>${esc(sm.header)}　${sm.songs_n}曲・${sm.places_n}地名・${sm.seconds}秒</b>
+      ${bad ? `<div class="bad">場所が分からない地名が ${bad} 件あります。座標を入れてください。</div>` : ""}
+      ${sm.songs.map((s,i) => `<div>${String(i+1).padStart(2,"0")}. ${esc(s.title)}　${s.places.map(p =>
+        `<span class="${p.kind==="none" && !/出さない/.test(p.source) ? "bad" : ""}" title="${esc(p.source)}">${MARK[p.kind]}${esc(p.label)}</span>`).join("　")}</div>`).join("")}</div>`;
+  }
+  async function listVids(){
+    try {
+      const v = await (await fetch("api/videos", {cache:"no-store"})).json();
+      $("sVids").innerHTML = v.length ? v.map(x => `<div class="vid"><span>${esc(x.file)}</span><span style="flex:none;color:var(--mute)">${x.time}・${(x.size/1048576).toFixed(1)}MB</span>
+        <a href="video/${encodeURIComponent(x.file)}" target="_blank" rel="noopener">再生</a><a href="download/${encodeURIComponent(x.file)}">ダウンロード</a></div>`).join("")
+        : `<div class="note">まだありません</div>`;
+    } catch(e){}
+  }
+  $("sCheck").onclick = async () => { busy(true, "確認中…"); try { showSummary(await post("api/check")); busy(false, ""); } catch(e){ busy(false, "エラー: " + e.message); } };
+  $("sSave").onclick = async () => { try { const j = await post("api/save"); flash("sMsg", j.saved + " に保存しました"); } catch(e){ flash("sMsg", "エラー: " + e.message); } };
+  $("sPreview").onclick = async () => {
+    busy(true, "プレビューを描いています…");
+    try { const j = await post("api/preview"); showSummary(j.summary);
+      $("sThumbs").innerHTML = j.images.map(u => `<a href="${u}" target="_blank" rel="noopener"><img src="${u}?t=${Date.now()}" alt="プレビュー"></a>`).join("");
+      busy(false, "");
+    } catch(e){ busy(false, "エラー: " + e.message); }
+  };
+  $("sRender").onclick = async () => {
+    busy(true, "書き出しを始めます…"); $("sProg").hidden = false; $("sBar").style.width = "0";
+    try {
+      const { job } = await post("api/render");
+      const tick = async () => {
+        const j = await (await fetch("api/job/" + job, {cache:"no-store"})).json();
+        $("sBar").style.width = Math.round((j.progress||0)*100) + "%";
+        $("sState").textContent = j.state + (j.state==="書き出し中" ? `　${Math.round(j.progress*100)}%` + (j.eta ? `　残り約${j.eta}秒` : "") : "");
+        if (j.summary && !$("sResult").innerHTML) showSummary(j.summary);
+        if (j.state === "完了") {
+          busy(false, "");
+          $("sState").innerHTML = `完了（${j.took}秒）　<a href="download/${encodeURIComponent(j.file)}" style="color:var(--accent);font-weight:700">ダウンロード</a>`;
+          $("sThumbs").innerHTML = `<video class="player" src="video/${encodeURIComponent(j.file)}" controls playsinline></video>`;
+          listVids(); return;
+        }
+        if (j.state === "エラー") { busy(false, "エラー: " + j.error); return; }
+        setTimeout(tick, 1000);
+      };
+      tick();
+    } catch(e){ busy(false, "エラー: " + e.message); }
+  };
+  async function listConfigs(){
+    try {
+      const fs = await (await fetch("api/configs", {cache:"no-store"})).json();
+      $("sLoad").innerHTML = `<option value="">configs から開く…</option>` + fs.map(f => `<option>${esc(f)}</option>`).join("");
+    } catch(e){}
+  }
+  $("sLoad").onchange = async () => {
+    const f = $("sLoad").value; if (!f) return;
+    try { applyConfig(await (await fetch("api/config/" + encodeURIComponent(f), {cache:"no-store"})).json()); flash("sMsg", f + " を開きました"); }
+    catch(e){ flash("sMsg", "開けませんでした: " + e.message); }
+    $("sLoad").value = "";
+  };
+  const _save = $("sSave").onclick;
+  $("sSave").onclick = async () => { await _save(); listConfigs(); };
+  listConfigs();
+  listVids();
+})();
 </script>
