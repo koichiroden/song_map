@@ -1,0 +1,443 @@
+<title>ご当地ソング動画ビルダー</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Dela+Gothic+One&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* 地図動画と同じ夜の海の色。左＝曲の棚、右＝動画の台本（選んだ順） */
+:root{
+  --bg:#f3f6f6; --panel:#ffffff; --sunk:#e8eeee; --line:#d3dddd; --fg:#16201f; --mute:#5d6e6c;
+  --accent:#0f9e8a; --accent-ink:#ffffff; --accent-soft:#d6f2ed; --warn:#b4610e; --warn-soft:#fbead7;
+  --road:#d9731f; --river:#2f86c4;
+  --f-display:"Dela Gothic One","Hiragino Sans","Noto Sans JP",sans-serif;
+  --f-body:"Zen Kaku Gothic New","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#07090c; --panel:#10151b; --sunk:#0b0f13; --line:#26303a; --fg:#eef2f4; --mute:#8a96a3;
+  --accent:#3fd0bb; --accent-ink:#06211d; --accent-soft:#12332e; --warn:#f0a35a; --warn-soft:#3a2614;
+  --road:#ff9a3c; --river:#4aa3e0; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#07090c; --panel:#10151b; --sunk:#0b0f13; --line:#26303a; --fg:#eef2f4; --mute:#8a96a3;
+  --accent:#3fd0bb; --accent-ink:#06211d; --accent-soft:#12332e; --warn:#f0a35a; --warn-soft:#3a2614;
+  --road:#ff9a3c; --river:#4aa3e0; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 32px}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 24px;padding-block:20px 14px;border-bottom:3px solid var(--accent);margin-bottom:18px}
+.brand{font-family:var(--f-display);font-size:22px;letter-spacing:.02em;line-height:1.2}
+.brand small{display:block;font-family:var(--f-body);font-weight:500;font-size:12px;color:var(--mute);letter-spacing:.04em;margin-top:4px}
+.titlebox{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
+.titlebox label{font-size:12px;color:var(--mute)}
+.titleinput{display:flex;align-items:baseline;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px 12px}
+.titleinput input{border:0;background:transparent;font-size:20px;font-weight:700;width:9em;min-width:0;padding:0}
+.titleinput input:focus{outline:none}
+.titleinput:focus-within{border-color:var(--accent)}
+.titleinput span{font-size:16px;font-weight:700;color:var(--mute);white-space:nowrap}
+
+.grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:18px;align-items:start}
+@media (min-width:901px){.grid>section:first-child{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px)}}
+@media (max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;min-width:0}
+.panel>h2{font-size:13px;letter-spacing:.08em;color:var(--mute);margin:0;padding:14px 16px 0;display:flex;align-items:center;gap:8px}
+.panel>h2 b{color:var(--fg);font-size:15px;letter-spacing:.02em}
+.count{font-family:var(--f-mono);font-size:12px;color:var(--mute);margin-left:auto;font-weight:400;letter-spacing:0}
+
+/* 曲の棚 */
+.filters{display:flex;flex-wrap:wrap;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.filters input[type=search]{flex:1 1 100%;background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.filters select{background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:6px 8px;flex:1 1 140px;min-width:0}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;flex:1 1 100%}
+.seg button{flex:1;border:0;background:var(--sunk);padding:6px 4px;font-size:12px;color:var(--mute)}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);font-weight:700}
+.shelf{max-height:calc(100vh - 230px);min-height:320px;overflow:auto}
+.group{position:sticky;top:0;background:var(--panel);font-size:12px;font-weight:700;color:var(--accent);padding:8px 16px 4px;border-bottom:1px solid var(--line);z-index:1;letter-spacing:.04em}
+.row{display:grid;grid-template-columns:28px minmax(0,1fr);gap:8px;padding:8px 16px;border-bottom:1px solid var(--line);cursor:pointer;align-items:start}
+.row:hover{background:var(--sunk)}
+.row.on{background:var(--accent-soft)}
+.badge{width:24px;height:24px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;font-family:var(--f-mono);font-size:11px;font-weight:600;margin-top:1px}
+.row.on .badge{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.row .t{font-weight:700}
+.row .a{color:var(--mute);font-size:12px}
+.row .p{font-size:12px;margin-top:2px;color:var(--fg);opacity:.85}
+.gtag{display:inline-block;font-size:10px;border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-left:6px;color:var(--mute);vertical-align:1px}
+
+/* 台本 */
+.cfg{padding:12px 16px;display:grid;gap:10px;border-bottom:1px solid var(--line)}
+.field{display:grid;gap:4px;min-width:0}
+.field>span{font-size:11px;color:var(--mute);letter-spacing:.04em}
+.field input,.field textarea,.field select{background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:7px 9px;width:100%;min-width:0}
+.field textarea{resize:vertical;min-height:2.6em}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.three{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);gap:10px}
+@media (max-width:520px){.two,.three{grid-template-columns:minmax(0,1fr)}}
+.empty{padding:28px 16px;color:var(--mute);text-align:center}
+ol.order{list-style:none;margin:0;padding:0}
+.song{border-bottom:1px solid var(--line);padding:12px 16px;display:grid;gap:10px}
+.song.drag{opacity:.4}
+.song.over{box-shadow:inset 0 3px 0 var(--accent)}
+.shead{display:flex;align-items:center;gap:10px;min-width:0}
+.num{font-family:var(--f-mono);font-weight:600;color:var(--accent);font-size:13px;flex:none;cursor:grab}
+.shead .st{font-weight:700;font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shead .sa{color:var(--mute);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.tools{margin-left:auto;display:flex;gap:4px;flex:none}
+.ib{border:1px solid var(--line);background:var(--sunk);border-radius:7px;min-width:30px;height:30px;padding:0 8px;font-size:13px}
+.ib:hover{border-color:var(--accent)}
+.ib.x:hover{border-color:var(--warn);color:var(--warn)}
+details.edit>summary{cursor:pointer;font-size:12px;color:var(--mute);list-style:none}
+details.edit>summary::before{content:"▸ ";}
+details.edit[open]>summary::before{content:"▾ ";}
+details.edit>div{display:grid;gap:10px;margin-top:10px}
+
+.places{display:grid;gap:6px}
+.place{display:grid;grid-template-columns:minmax(0,1.3fr) auto minmax(0,1.2fr) auto auto;gap:6px;align-items:center}
+@media (max-width:620px){.place{grid-template-columns:minmax(0,1fr) auto auto;}.place .ll{grid-column:1 / -1}}
+.place input{background:var(--sunk);border:1px solid var(--line);border-radius:7px;padding:5px 8px;min-width:0;width:100%}
+.types{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.types button{border:0;background:var(--sunk);padding:4px 7px;font-size:12px;color:var(--mute);white-space:nowrap}
+.types button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);font-weight:700}
+.types button[data-t=line][aria-pressed=true]{background:var(--road);color:#1b1004}
+.types button[data-t=none][aria-pressed=true]{background:var(--mute);color:var(--panel)}
+.dict{font-size:10px;border-radius:4px;padding:1px 5px;white-space:nowrap}
+.dict.ok{background:var(--accent-soft);color:var(--accent)}
+.dict.net{background:var(--warn-soft);color:var(--warn)}
+.addp{justify-self:start;border:1px dashed var(--line);background:transparent;border-radius:7px;padding:4px 10px;font-size:12px;color:var(--mute)}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{font-size:11px;border-radius:999px;padding:1px 8px;background:var(--sunk);border:1px solid var(--line)}
+.chip.area{border-color:var(--accent);color:var(--accent)}
+.chip.line{border-color:var(--road);color:var(--road)}
+.chip.none{opacity:.5;text-decoration:line-through}
+
+.out{padding:12px 16px;display:grid;gap:10px}
+.outbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);border-radius:9px;padding:8px 14px;font-weight:700}
+.btn.ghost{background:transparent;color:var(--accent)}
+.btn.plain{background:transparent;border-color:var(--line);color:var(--fg);font-weight:500}
+.toast{font-size:12px;color:var(--accent)}
+pre.json{margin:0;background:var(--sunk);border:1px solid var(--line);border-radius:10px;padding:12px;font-family:var(--f-mono);font-size:12px;line-height:1.5;max-height:340px;overflow:auto;white-space:pre}
+.cmd{font-family:var(--f-mono);font-size:12px;background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:8px 10px;overflow-x:auto;white-space:nowrap}
+.note{font-size:12px;color:var(--mute)}
+.import textarea{width:100%;min-height:90px;background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:8px;font-family:var(--f-mono);font-size:12px}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--mute);padding:10px 16px 0}
+.legend i{display:inline-block;width:18px;height:4px;border-radius:2px;vertical-align:middle;margin-right:4px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<header class="top">
+  <div class="brand">ご当地ソング動画ビルダー<small>曲を選んだ順に紹介する縦動画の config をつくる</small></div>
+  <div class="titlebox">
+    <label for="title">動画タイトル</label>
+    <div class="titleinput"><input id="title" placeholder="湘南" autocomplete="off"><span>のご当地ソング</span></div>
+  </div>
+</header>
+
+<div class="grid">
+  <section class="panel" aria-label="曲の一覧">
+    <h2><b>曲をえらぶ</b><span class="count" id="shelfCount"></span></h2>
+    <div class="filters">
+      <input type="search" id="q" placeholder="曲名・歌手・地名でさがす（例: 江ノ島、サザン、134）">
+      <div class="seg" id="genre" role="group" aria-label="ジャンル"></div>
+      <select id="area" aria-label="都道府県"></select>
+      <select id="spot" aria-label="地域"></select>
+      <select id="onlySel" aria-label="表示">
+        <option value="all">すべて表示</option><option value="sel">選んだ曲だけ</option>
+      </select>
+    </div>
+    <div class="shelf" id="shelf"></div>
+  </section>
+
+  <section class="panel" aria-label="動画の台本">
+    <h2><b>動画の台本</b><span class="count" id="selCount"></span></h2>
+    <div class="cfg">
+      <div class="three">
+        <label class="field"><span>最後の画面に出す出典・クレジット</span><input id="credit" placeholder="曲情報: Wikipedia「ご当地ソング」ほか"></label>
+        <label class="field"><span>1曲の秒数</span><input id="songSec" type="number" min="3" max="15" step="0.5" value="5.5"></label>
+        <label class="field"><span>題名のエリア（イントロの輪郭）</span><input id="focus" placeholder="タイトルと同じ"></label>
+      </div>
+    </div>
+    <div class="legend"><span><i style="background:var(--accent)"></i>点・エリア</span><span><i style="background:var(--road)"></i>線（路線・道路・川をビーっと引く）</span><span><span class="dict ok">辞書</span> 座標あり</span><span><span class="dict net">検索</span> 実行時に地名検索（ずれたら座標を入力）</span></div>
+    <ol class="order" id="order"></ol>
+    <div class="out">
+      <div class="outbar">
+        <button class="btn plain" id="addCustom">＋ リストにない曲を追加</button>
+        <button class="btn plain" id="clearAll">すべて外す</button>
+        <button class="btn plain" id="loadSample">湘南のサンプル</button>
+      </div>
+      <div class="outbar">
+        <button class="btn" id="copy">JSON をコピー</button>
+        <button class="btn ghost" id="save" hidden>JSON を保存</button>
+        <span class="toast" id="toast" role="status"></span>
+      </div>
+      <div class="cmd" id="cmd"></div>
+      <pre class="json" id="json"></pre>
+      <details class="import">
+        <summary class="note">保存した JSON を読み込んで続きを編集する</summary>
+        <textarea id="importText" placeholder="ここに config の JSON を貼り付け"></textarea>
+        <div class="outbar"><button class="btn plain" id="importBtn">読み込む</button><span class="toast" id="importMsg"></span></div>
+      </details>
+    </div>
+  </section>
+</div>
+
+<script>
+const SONGS = /*SONGS*/[];
+const DICT = /*DICT*/{};
+const SAMPLE = /*SAMPLE*/{};
+const GL = {D:"童謡", J:"JPOP", E:"懐メロ・歌謡曲", A:"アニソン"};
+const KIND = {"曲名":"曲名に地名","歌詞":"歌詞に地名","曲名・歌詞":"曲名・歌詞に地名","モチーフ":"モチーフ","曲名・モチーフ":"曲名・モチーフ","CM":"CMソング","曲名・CM":"曲名に地名・CMソング","歌詞・CM":"歌詞に地名・CMソング","発車メロディ":"駅の発車メロディ","アニメの舞台":"アニメの舞台","施設テーマ":"施設のテーマ曲"};
+const LINE_RE = /線$|線沿線$|電鉄|電車|新幹線|鉄道|ライン$|国道|号線?$|街道|フリーウェイ|ルート|Route|ROUTE|246|京浜|首都高|高速/;
+const sets = {}; for (const k in DICT) sets[k] = new Set(DICT[k]);
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function prefName(n){ for (const s of ["","都","府","県"]) if (sets.prefs.has(n+s)) return n+s; return null; }
+function guessType(n){
+  if (sets.lines.has(n) || LINE_RE.test(n)) return "line";
+  if (sets.areas.has(n) || prefName(n)) return "area";
+  return "point";
+}
+function known(n, t){
+  const st = n.replace(/駅$/, "");
+  if (t === "line") return sets.lines.has(n) || sets.rails.has(n) || [...sets.rails].some(r => r.length>=3 && n.endsWith(r));
+  if (t === "area") return sets.areas.has(n) || !!prefName(n) || ["","市","区","町","村"].some(s => sets.munis.has(n+s));
+  return sets.landmarks.has(n) || sets.stations.has(st) || !!prefName(n) || ["","市","区","町","村"].some(s => sets.munis.has(n+s));
+}
+function splitPlaces(s){
+  // 「・」で分ける（かっこの中は分けない）。かっこ書きは補足なので外す
+  const out = []; let cur = "", depth = 0;
+  for (const ch of String(s||"")) {
+    if ("（(".includes(ch)) depth++;
+    if ("）)".includes(ch)) depth = Math.max(0, depth-1);
+    if (depth === 0 && "・、,/".includes(ch)) { out.push(cur); cur = ""; } else cur += ch;
+  }
+  out.push(cur);
+  return out.map(x => x.replace(/[（(].*?[）)]/g, "").replace(/など$/, "").trim()).filter(Boolean);
+}
+
+/* ---------------- 状態 ---------------- */
+let state = { title:"", credit:"", songSec:5.5, focus:"", songs:[] };   // songs: {uid, sid, title, artist, kind, note, source, sec, places:[{name,type,label,ll}]}
+let uid = 1;
+function fromSong(r){
+  return { uid: uid++, sid: r.id, title: r.title, artist: r.artist, kind: KIND[r.kind] || r.kind,
+    note: r.note || "", source: "", sec: "",
+    places: splitPlaces(r.places).map(n => ({ name:n, type:guessType(n), label:"", ll:"" })) };
+}
+function save(){ try { localStorage.setItem("gotouchi-builder", JSON.stringify(state)); } catch(e){} }
+function load(){
+  try { const s = JSON.parse(localStorage.getItem("gotouchi-builder")); if (s && s.songs) { state = s; uid = Math.max(0, ...s.songs.map(x=>x.uid)) + 1; return true; } } catch(e){}
+  return false;
+}
+
+/* ---------------- 曲の棚 ---------------- */
+const genres = [["all","すべて"],["J","JPOP"],["E","懐メロ・歌謡曲"],["D","童謡"],["A","アニソン"]];
+let gsel = "all";
+$("genre").innerHTML = genres.map(([k,l]) => `<button data-g="${k}" aria-pressed="${k===gsel}">${l}</button>`).join("");
+$("genre").onclick = e => { const b = e.target.closest("button"); if (!b) return; gsel = b.dataset.g;
+  [...$("genre").children].forEach(x => x.setAttribute("aria-pressed", x.dataset.g===gsel)); renderShelf(); };
+const areas = [...new Set(SONGS.map(r => r.pref))];
+$("area").innerHTML = `<option value="">都道府県：すべて</option>` + areas.map(a => `<option>${esc(a)}</option>`).join("");
+function fillSpots(){
+  const a = $("area").value;
+  const spots = [...new Set(SONGS.filter(r => !a || r.pref===a).map(r => r.spot))];
+  $("spot").innerHTML = `<option value="">地域：すべて</option>` + spots.map(s => `<option>${esc(s)}</option>`).join("");
+}
+$("area").onchange = () => { fillSpots(); renderShelf(); };
+["q","spot","onlySel"].forEach(id => $(id).addEventListener("input", renderShelf));
+
+function selIndex(sid){ return state.songs.findIndex(s => s.sid === sid); }
+function renderShelf(){
+  const q = $("q").value.trim().toLowerCase(), a = $("area").value, sp = $("spot").value, only = $("onlySel").value === "sel";
+  const rows = SONGS.filter(r => (gsel==="all" || r.genre===gsel) && (!a || r.pref===a) && (!sp || r.spot===sp)
+    && (!only || selIndex(r.id) >= 0)
+    && (!q || (r.title+" "+r.artist+" "+r.places+" "+r.spot+" "+r.note).toLowerCase().includes(q)));
+  let html = "", last = "";
+  for (const r of rows) {
+    if (r.spot !== last) { html += `<div class="group">${esc(r.pref)}${r.spot !== r.pref.replace(/[都府県]$/,"") ? "　" + esc(r.spot) : ""}</div>`; last = r.spot; }
+    const i = selIndex(r.id);
+    html += `<div class="row${i>=0?" on":""}" data-id="${r.id}" role="checkbox" aria-checked="${i>=0}" tabindex="0">
+      <div class="badge">${i>=0 ? i+1 : ""}</div>
+      <div><div><span class="t">${esc(r.title)}</span><span class="gtag">${GL[r.genre]||""}</span></div>
+      <div class="a">${esc(r.artist)}・${esc(r.kind)}</div><div class="p">📍 ${esc(r.places)}</div></div></div>`;
+  }
+  $("shelf").innerHTML = html || `<div class="empty">条件に合う曲がありません</div>`;
+  $("shelfCount").textContent = `${rows.length} / ${SONGS.length}曲`;
+}
+function toggle(id){
+  const i = selIndex(id);
+  if (i >= 0) state.songs.splice(i, 1);
+  else state.songs.push(fromSong(SONGS.find(r => r.id === id)));
+  changed(true);
+}
+$("shelf").addEventListener("click", e => { const r = e.target.closest(".row"); if (r) toggle(+r.dataset.id); });
+$("shelf").addEventListener("keydown", e => { if ((e.key===" "||e.key==="Enter") && e.target.classList.contains("row")) { e.preventDefault(); toggle(+e.target.dataset.id); } });
+
+/* ---------------- 台本 ---------------- */
+const TYPES = [["point","点"],["area","エリア"],["line","線"],["none","出さない"]];
+function placeRow(p, si, pi){
+  return `<div class="place" data-s="${si}" data-p="${pi}">
+    <input data-k="name" value="${esc(p.name)}" aria-label="地名" placeholder="地名">
+    <div class="types">${TYPES.map(([t,l]) => `<button data-t="${t}" aria-pressed="${p.type===t}">${l}</button>`).join("")}</div>
+    <input class="ll" data-k="ll" value="${esc(p.ll)}" placeholder="座標 35.31, 139.42（任意）" aria-label="座標（緯度, 経度）">
+    ${badge(p)}
+    <button class="ib x" data-act="delp" aria-label="この地名を外す">×</button></div>`;
+}
+function renderOrder(){
+  const S = state.songs;
+  $("selCount").textContent = S.length ? `${S.length}曲` : "";
+  if (!S.length) { $("order").innerHTML = `<li class="empty">左の一覧から曲をクリックすると、選んだ順にここへ並びます。</li>`; return; }
+  $("order").innerHTML = S.map((s, i) => `<li class="song" data-s="${i}" draggable="true">
+    <div class="shead"><span class="num" title="ドラッグで並べ替え">${String(i+1).padStart(2,"0")}</span>
+      <span class="st">♪ ${esc(s.title)}</span><span class="sa">${esc(s.artist)}</span>
+      <span class="tools"><button class="ib" data-act="up" aria-label="上へ">↑</button><button class="ib" data-act="down" aria-label="下へ">↓</button><button class="ib x" data-act="del" aria-label="外す">×</button></span></div>
+    <div class="chips">${s.places.map(p => `<span class="chip ${p.type}">${esc(p.label||p.name)}</span>`).join("")}</div>
+    <details class="edit"${s._open?" open":""}><summary>地名・説明・出典を編集</summary><div>
+      <div class="two">
+        <label class="field"><span>曲名</span><input data-f="title" value="${esc(s.title)}"></label>
+        <label class="field"><span>歌手</span><input data-f="artist" value="${esc(s.artist)}"></label>
+      </div>
+      <div class="two">
+        <label class="field"><span>種類（カード上部の表示）</span><input data-f="kind" value="${esc(s.kind)}" list="kinds"></label>
+        <label class="field"><span>この曲の秒数（空欄＝全体と同じ）</span><input data-f="sec" type="number" min="3" max="20" step="0.5" value="${esc(s.sec)}"></label>
+      </div>
+      <div class="field"><span>地図に出す地名（上から順にチップに並ぶ）</span><div class="places">${s.places.map((p, pi) => placeRow(p, i, pi)).join("")}
+        <button class="addp" data-act="addp">＋ 地名を追加</button></div></div>
+      <label class="field"><span>説明（カードの本文）</span><textarea data-f="note" rows="2">${esc(s.note)}</textarea></label>
+      <label class="field"><span>出典（空欄なら出さない）</span><input data-f="source" value="${esc(s.source)}" placeholder="例: 歌ネット / Wikipedia「〇〇」"></label>
+    </div></details></li>`).join("") + `<datalist id="kinds"><option>曲名に地名</option><option>歌詞に地名</option><option>曲名・歌詞に地名</option><option>モチーフ</option><option>CMソング</option><option>駅の発車メロディ</option><option>アニメの舞台</option></datalist>`;
+}
+
+$("order").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  const li = b.closest(".song"); const i = +li.dataset.s; const S = state.songs;
+  const act = b.dataset.act;
+  if (act === "up" && i > 0) [S[i-1], S[i]] = [S[i], S[i-1]];
+  else if (act === "down" && i < S.length-1) [S[i+1], S[i]] = [S[i], S[i+1]];
+  else if (act === "del") S.splice(i, 1);
+  else if (act === "addp") { S[i].places.push({name:"", type:"point", label:"", ll:""}); S[i]._open = true; }
+  else if (act === "delp") { const pi = +b.closest(".place").dataset.p; S[i].places.splice(pi, 1); S[i]._open = true; }
+  else if (b.dataset.t) { const pi = +b.closest(".place").dataset.p; S[i].places[pi].type = b.dataset.t; S[i].places[pi]._typed = true; S[i]._open = true; }
+  else return;
+  changed(true);
+});
+$("order").addEventListener("toggle", e => { const li = e.target.closest(".song"); if (li) state.songs[+li.dataset.s]._open = e.target.open; }, true);
+$("order").addEventListener("input", e => {
+  const t = e.target, li = t.closest(".song"); if (!li) return;
+  const s = state.songs[+li.dataset.s];
+  if (t.dataset.f) s[t.dataset.f] = t.value;
+  else if (t.dataset.k) {
+    const p = s.places[+t.closest(".place").dataset.p];
+    p[t.dataset.k] = t.value;
+    if (t.dataset.k === "name" && !p._typed) p.type = guessType(t.value.trim());
+  }
+  refreshSong(+li.dataset.s);
+  changed(false);
+});
+function badge(p){
+  return p.type==="none" ? `<span></span>` : parseLL(p.ll) ? `<span class="dict ok">座標</span>` : known(p.name, p.type) ? `<span class="dict ok">辞書</span>` : `<span class="dict net">検索</span>`;
+}
+// 入力中は全体を描き直さず、その曲の表示だけ更新する（カーソルが飛ばないように）
+function refreshSong(i){
+  const s = state.songs[i], li = document.querySelector(`.song[data-s="${i}"]`); if (!li) return;
+  li.querySelector(".st").textContent = "♪ " + s.title;
+  li.querySelector(".sa").textContent = s.artist;
+  li.querySelector(".chips").innerHTML = s.places.map(p => `<span class="chip ${p.type}">${esc(p.label||p.name)}</span>`).join("");
+  li.querySelectorAll(".place").forEach(row => {
+    const p = s.places[+row.dataset.p];
+    row.querySelectorAll(".types button").forEach(b => b.setAttribute("aria-pressed", b.dataset.t === p.type));
+    const old = row.children[3]; const tmp = document.createElement("div"); tmp.innerHTML = badge(p); old.replaceWith(tmp.firstElementChild);
+  });
+}
+// ドラッグで並べ替え
+let dragFrom = null;
+$("order").addEventListener("dragstart", e => { const li = e.target.closest(".song"); if (!li || e.target.closest("input,textarea")) return; dragFrom = +li.dataset.s; li.classList.add("drag"); });
+$("order").addEventListener("dragend", e => { document.querySelectorAll(".song").forEach(x => x.classList.remove("drag","over")); });
+$("order").addEventListener("dragover", e => { const li = e.target.closest(".song"); if (li && dragFrom !== null) { e.preventDefault(); document.querySelectorAll(".song").forEach(x => x.classList.toggle("over", x===li)); } });
+$("order").addEventListener("drop", e => { const li = e.target.closest(".song"); if (!li || dragFrom === null) return; e.preventDefault();
+  const to = +li.dataset.s; const [m] = state.songs.splice(dragFrom, 1); state.songs.splice(to, 0, m); dragFrom = null; changed(true); });
+
+/* ---------------- config JSON ---------------- */
+function parseLL(s){
+  const m = String(s).match(/(-?\d+(?:\.\d+)?)\s*[,，、\s]\s*(-?\d+(?:\.\d+)?)/); if (!m) return null;
+  let a = +m[1], b = +m[2];
+  // 「緯度, 経度」（Googleマップの形式）を [経度, 緯度] にする。逆順でも日本の範囲なら判別できる
+  if (a > 100 && b < 50) [a, b] = [b, a];
+  return [b, a];
+}
+function buildConfig(){
+  const title = $("title").value.trim();
+  const cfg = { title: title || "湘南" };
+  const credit = $("credit").value.trim(); if (credit) cfg.credit = credit;
+  const focus = $("focus").value.trim(); if (focus) cfg.focus = focus;
+  const sec = parseFloat($("songSec").value); if (sec && sec !== 5.5) cfg.options = { song_sec: sec };
+  cfg.songs = state.songs.map(s => {
+    const o = { title: s.title, artist: s.artist, kind: s.kind };
+    o.places = s.places.filter(p => p.name.trim()).map(p => {
+      const q = { name: p.name.trim(), type: p.type };
+      if (p.label) q.label = p.label;
+      const ll = parseLL(p.ll); if (ll) q.lonlat = ll;
+      return q;
+    });
+    if (s.note) o.note = s.note;
+    if (s.source) o.source = s.source;
+    if (s.sec) o.sec = parseFloat(s.sec);
+    if (s.sid) o.song_id = s.sid;
+    return o;
+  });
+  return cfg;
+}
+function slug(t){ return (t || "video").replace(/[\\/:*?"<>|\s]+/g, "_"); }
+function renderOut(){
+  const cfg = buildConfig();
+  const txt = JSON.stringify(cfg, null, 2);
+  $("json").textContent = txt;
+  $("cmd").textContent = `python make_video.py configs/${slug(cfg.title)}.json`;
+  return txt;
+}
+function changed(redraw){
+  state.title = $("title").value; state.credit = $("credit").value; state.songSec = $("songSec").value; state.focus = $("focus").value;
+  save();
+  if (redraw) { renderOrder(); renderShelf(); }
+  renderOut();
+}
+["title","credit","songSec","focus"].forEach(id => $(id).addEventListener("input", () => changed(false)));
+
+function flash(id, msg){ $(id).textContent = msg; clearTimeout(flash[id]); flash[id] = setTimeout(() => $(id).textContent = "", 2600); }
+$("copy").onclick = () => {
+  const txt = renderOut();
+  const fallback = () => { const r = document.createRange(); r.selectNodeContents($("json")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); flash("toast", "選択しました。⌘C / Ctrl+C でコピーしてください"); };
+  try { navigator.clipboard.writeText(txt).then(() => flash("toast", `コピーしました（configs/${slug(buildConfig().title)}.json に保存）`), fallback); } catch(e){ fallback(); }
+};
+// ローカルや GitHub Pages で開いたときだけ保存ボタンを出す
+if (location.protocol === "file:" || /localhost|127\.0\.0\.1|github\.io/.test(location.hostname)) {
+  $("save").hidden = false;
+  $("save").onclick = () => { const txt = renderOut(); const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([txt], {type:"application/json"})); a.download = slug(buildConfig().title) + ".json"; a.click(); };
+}
+$("clearAll").onclick = () => { state.songs = []; changed(true); };
+$("addCustom").onclick = () => { state.songs.push({ uid: uid++, sid: null, title:"新しい曲", artist:"", kind:"歌詞に地名", note:"", source:"", sec:"", places:[{name:"", type:"point", label:"", ll:""}], _open:true }); changed(true); };
+function applyConfig(cfg){
+  $("title").value = cfg.title || ""; $("credit").value = cfg.credit || ""; $("focus").value = typeof cfg.focus === "string" ? cfg.focus : "";
+  $("songSec").value = (cfg.options && cfg.options.song_sec) || 5.5;
+  state.songs = (cfg.songs || []).map(s => ({ uid: uid++, sid: s.song_id || null, title: s.title || "", artist: s.artist || "", kind: s.kind || "",
+    note: s.note || "", source: s.source || "", sec: s.sec || "",
+    places: (typeof s.places === "string" ? splitPlaces(s.places) : (s.places || [])).map(p => typeof p === "string"
+      ? { name: p, type: guessType(p), label: "", ll: "" }
+      : { name: p.name, type: p.type && p.type !== "auto" ? p.type : (p.show === false ? "none" : guessType(p.name)), label: p.label || "",
+          ll: p.lonlat ? `${p.lonlat[1]}, ${p.lonlat[0]}` : "" }) }));
+  changed(true);
+}
+$("loadSample").onclick = () => applyConfig(SAMPLE);
+$("importBtn").onclick = () => { try { applyConfig(JSON.parse($("importText").value)); flash("importMsg", "読み込みました"); } catch(e){ flash("importMsg", "JSON の形が正しくありません: " + e.message); } };
+
+/* ---------------- 起動 ---------------- */
+fillSpots();
+if (load()) { $("title").value = state.title || ""; $("credit").value = state.credit || ""; $("songSec").value = state.songSec || 5.5; $("focus").value = state.focus || ""; renderShelf(); renderOrder(); renderOut(); }
+else applyConfig(SAMPLE);
+</script>
