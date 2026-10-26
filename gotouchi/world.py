@@ -56,6 +56,8 @@ class World:
         self.areas = _load("areas.json")
         self.lines = _load("lines.json")
         self.landmarks = _load("landmarks.json")
+        self.aliases = _load("aliases.json") if os.path.exists(os.path.join(DATA, "aliases.json")) else {}
+        self.ignore = set(_load("ignore.json")) if os.path.exists(os.path.join(DATA, "ignore.json")) else set()
         self.rail = _load("kanto_rail.json")
         self.stations = _load("kanto_stations.json")
         self.muni_index = _load("muni_index.json")
@@ -157,6 +159,9 @@ class World:
 
     # ------------------------------------------------------------ 種類の推測
     def guess_type(self, name):
+        name = self.aliases.get(name, name)
+        if name in self.ignore:
+            return "none"
         if name in self.lines or LINE_RE.search(name):
             return "line"
         if name in self.areas or self.pref_name(name):
@@ -294,8 +299,11 @@ class World:
         """p = {"name":..., "type": "point|area|line|auto", ...}。見つからなければ kind=none"""
         if isinstance(p, str): p = {"name": p}
         name = p["name"]
-        if p.get("show") is False or p.get("type") == "none":
-            f = Feature(name, "none", source="地図に出さない")
+        disp = name
+        name = self.aliases.get(name, name)          # 表記ゆれ（サッポロ→札幌 など）
+        auto_none = (p.get("type") in (None, "auto")) and name in self.ignore
+        if p.get("show") is False or p.get("type") == "none" or auto_none:
+            f = Feature(name, "none", source="地図に出さない（範囲が広い・海外・場所不明）" if auto_none else "地図に出さない")
         else:
             t = p.get("type") or "auto"
             if t == "auto": t = self.guess_type(name)
@@ -308,7 +316,8 @@ class World:
                     f.source += f"（{t}が見つからず点で表示）"
             if f is None:
                 f = Feature(name, "none", source="場所が分からない（lonlat を指定してください）")
-        f.label = p.get("label", name)
+        f.label = p.get("label", disp)
+        f.name = disp
         if f.kind == "point" and p.get("side"): f.side = p["side"]
         return f
 

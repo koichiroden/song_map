@@ -460,6 +460,8 @@ class Video:
         kind = s.get("kind") or "曲名・歌詞に地名"
         kind_label = f"{kind}・{n_map}か所" if n_map else kind
         chips = [f.label for f in s["feats"]] + list(s.get("extra_chips", []))
+        if len(chips) > 14:   # 地名が多い曲はチップを省略
+            chips = chips[:13] + [f"ほか{len(chips) - 13}か所"]
         self.font(ctx, 28, True)
         rows, cur, cw = [], [], 0
         for c in chips:
@@ -590,12 +592,22 @@ class Video:
                         if la > 0: self.line_label(ctx, cam, f, a=la)
                     n_line += 1
             pin_t0 = mv*0.8 + (0.9 if n_line else 0)
+            n_pt = sum(1 for f in s["feats"] if f.kind == "point")
+            dense = n_pt > 12          # 地名が多い曲：次々にピンを打ち、ラベルは出た瞬間だけ見せる
+            step = max(0.05, min(0.22, (s["dur"] - pin_t0 - 1.2) / max(1, n_pt))) if dense else 0.22
             pi = 0
             for idx, f in enumerate(s["feats"]):
                 if f.kind != "point": continue
-                pa = ease((lt - pin_t0 - pi*0.22)/0.35)
+                st = pin_t0 + pi*step
+                pa = ease((lt - st)/0.3)
                 if pa > 0:
-                    self.draw_pin(ctx, cam, f, s["sides"].get(idx, "R"), a=pa, scale=0.6+0.4*pa)
+                    if dense:
+                        la = 1 - ease((lt - st - 0.7)/0.3)
+                        self.draw_pin(ctx, cam, f, s["sides"].get(idx, "R"), a=pa, scale=0.45+0.3*pa, label=False)
+                        if la > 0:
+                            self.draw_pin(ctx, cam, f, s["sides"].get(idx, "R"), a=pa*la, scale=0.75, label=True)
+                    else:
+                        self.draw_pin(ctx, cam, f, s["sides"].get(idx, "R"), a=pa, scale=0.6+0.4*pa)
                 pi += 1
             ca = ease((lt-0.45)/0.5) * (1 - ease((lt - s["dur"] + 0.35)/0.35))
             self.draw_card(ctx, k, s, a=ca, dy=(1-ease((lt-0.45)/0.5))*60)
@@ -649,8 +661,23 @@ class Video:
 
 # ------------------------------------------------------------------ 補助
 def _split(s):
+    """「・」で分ける（かっこの中は分けない）。かっこ書きや「ほか」「など」は外す"""
     import re
-    return [x.strip() for x in re.split(r"[・、,，/／]", s) if x.strip()]
+    out, cur, depth = [], "", 0
+    for ch in s:
+        if ch in "（(": depth += 1
+        if ch in "）)": depth = max(0, depth - 1)
+        if depth == 0 and ch in "・、,，/／":
+            out.append(cur); cur = ""
+        else:
+            cur += ch
+    out.append(cur)
+    res = []
+    for x in out:
+        x = re.sub(r"[（(].*?[）)]", "", x)
+        x = re.sub(r"\s*(ほか|など)$", "", x).strip()
+        if x: res.append(x)
+    return res
 
 def _polys(g):
     if g is None: return []

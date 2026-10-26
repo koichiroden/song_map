@@ -45,6 +45,8 @@ dict_ = {
     "stations": sorted(L("kanto_stations.json")),
     "munis": sorted(L("muni_index.json")),
     "prefs": [f["properties"]["name"] for f in L("prefectures.json")["features"]],
+    "aliases": L("aliases.json"),
+    "ignore": L("ignore.json"),
 }
 sample = json.load(open(os.path.join(R, "configs", "shonan.json"), encoding="utf-8"))
 t = open(os.path.join(R, "builder", "template.html"), encoding="utf-8").read()

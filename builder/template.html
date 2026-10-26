@@ -223,17 +223,22 @@ const SAMPLE = /*SAMPLE*/{};
 const GL = {D:"童謡", J:"JPOP", E:"懐メロ・歌謡曲", A:"アニソン"};
 const KIND = {"曲名":"曲名に地名","歌詞":"歌詞に地名","曲名・歌詞":"曲名・歌詞に地名","モチーフ":"モチーフ","曲名・モチーフ":"曲名・モチーフ","CM":"CMソング","曲名・CM":"曲名に地名・CMソング","歌詞・CM":"歌詞に地名・CMソング","発車メロディ":"駅の発車メロディ","アニメの舞台":"アニメの舞台","施設テーマ":"施設のテーマ曲"};
 const LINE_RE = /線$|線沿線$|電鉄|電車|新幹線|鉄道|ライン$|国道|号線?$|街道|フリーウェイ|ルート|Route|ROUTE|246|京浜|首都高|高速/;
-const sets = {}; for (const k in DICT) sets[k] = new Set(DICT[k]);
+const sets = {}; for (const k in DICT) if (Array.isArray(DICT[k])) sets[k] = new Set(DICT[k]);
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
+const ALIAS = DICT.aliases || {}, IGNORE = new Set(DICT.ignore || []);
+const canon = n => ALIAS[n] || n;
 function prefName(n){ for (const s of ["","都","府","県"]) if (sets.prefs.has(n+s)) return n+s; return null; }
 function guessType(n){
+  n = canon(n);
+  if (IGNORE.has(n)) return "none";
   if (sets.lines.has(n) || LINE_RE.test(n)) return "line";
   if (sets.areas.has(n) || prefName(n)) return "area";
   return "point";
 }
 function known(n, t){
+  n = canon(n);
   const st = n.replace(/駅$/, "");
   if (t === "line") return sets.lines.has(n) || sets.rails.has(n) || [...sets.rails].some(r => r.length>=3 && n.endsWith(r));
   if (t === "area") return sets.areas.has(n) || !!prefName(n) || ["","市","区","町","村"].some(s => sets.munis.has(n+s));
@@ -248,7 +253,7 @@ function splitPlaces(s){
     if (depth === 0 && "・、,/".includes(ch)) { out.push(cur); cur = ""; } else cur += ch;
   }
   out.push(cur);
-  return out.map(x => x.replace(/[（(].*?[）)]/g, "").replace(/など$/, "").trim()).filter(Boolean);
+  return out.map(x => x.replace(/[（(].*?[）)]/g, "").replace(/\s*(ほか|など)$/, "").trim()).filter(Boolean);
 }
 
 /* ---------------- 状態 ---------------- */
@@ -256,7 +261,7 @@ let state = { title:"", credit:"", songSec:5.5, focus:"", songs:[] };   // songs
 let uid = 1;
 function fromSong(r){
   return { uid: uid++, sid: r.id, title: r.title, artist: r.artist, kind: KIND[r.kind] || r.kind,
-    note: r.note || "", source: "", sec: "",
+    note: r.note || "", source: "", sec: r.sec || "",
     places: splitPlaces(r.places).map(n => ({ name:n, type:guessType(n), label:"", ll:"" })) };
 }
 function save(){ try { localStorage.setItem("gotouchi-builder", JSON.stringify(state)); } catch(e){} }
