@@ -41,7 +41,7 @@ def run_job(job_id, cfg):
         job["summary"] = v.summary()
         with RENDER_LOCK:
             job.update(state="書き出し中")
-            name = f"{slug(cfg.get('title'))}_gotouchi_{time.strftime('%m%d_%H%M%S')}.mp4"
+            name = f"{slug((cfg.get('title') or '') + (cfg.get('subtitle') or ''))}_gotouchi_{time.strftime('%m%d_%H%M%S')}.mp4"
             path = os.path.join(OUT, name)
             t0 = time.time()
 
@@ -148,14 +148,14 @@ class Handler(BaseHTTPRequestHandler):
                 os.makedirs(PREV, exist_ok=True)
                 for f in os.listdir(PREV):
                     os.remove(os.path.join(PREV, f))
-                ts = [1.5] + [s["t0"] + s["dur"] * 0.7 for s in v.songs] + [v.total - 0.5]
+                ts = [1.2, v.T0 + 1.5] + [s["t0_abs"] + s["dur"] * 0.7 for s in v.songs] + [v.total - 0.5]
                 stem = os.path.join(PREV, f"p{int(time.time())}")
                 paths = v.write(stem + ".mp4", preview=ts)
                 return self.send_json({"summary": v.summary(),
                                        "images": ["/preview/" + os.path.basename(p) for p in paths]})
             if path == "/api/save":
                 os.makedirs(CONFIGS, exist_ok=True)
-                name = slug(cfg.get("title")) + ".json"
+                name = slug((cfg.get("title") or "") + (cfg.get("subtitle") or "")) + ".json"
                 with open(os.path.join(CONFIGS, name), "w", encoding="utf-8") as f:
                     json.dump(cfg, f, ensure_ascii=False, indent=2)
                 return self.send_json({"saved": "configs/" + name})

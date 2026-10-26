@@ -88,9 +88,10 @@ python make_video.py configs/湘南.json                    # 動画を書き出
 ```jsonc
 {
   "title": "湘南",                       // →「湘南のご当地ソング」
+  "subtitle": "JPOP編",                  // サブタイトル（自由入力・省略可）。タイトルカットとヘッダーに出る
   "credit": "曲情報: Wikipedia「ご当地ソング」ほか",   // 最後の画面のクレジット（地図・路線の出典は自動で付く）
   "focus": "湘南",                       // イントロで輪郭を出すエリア（省略時はタイトル）
-  "options": {"song_sec": 5.5},          // 1曲の秒数など
+  "options": {"song_sec": 5.5, "title_sec": 3.0},   // 1曲の秒数、タイトルカットの秒数（0で無し）など
   "songs": [
     {
       "title": "希望の轍", "artist": "サザンオールスターズ", "kind": "歌詞に地名",

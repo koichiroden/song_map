@@ -20,7 +20,7 @@ BGRAIL = hexc("#323b46"); DARK = hexc("#0b0f13")
 
 DEFAULTS = {
     "width": 1080, "height": 1920, "fps": 30, "font": "Noto Sans CJK JP",
-    "intro_sec": 3.5, "song_sec": 5.5, "outro_sec": 5.0, "move_sec": 1.1,
+    "title_sec": 3.0, "intro_sec": 3.5, "song_sec": 5.5, "outro_sec": 5.0, "move_sec": 1.1,
     "point_span_km": 12, "header_note": "",
 }
 
@@ -40,6 +40,7 @@ class Video:
         self.world = World(online=online, verbose=verbose)
         self.title = cfg.get("title", "").strip() or "日本"
         self.header_title = cfg.get("header") or f"{self.title}のご当地ソング"
+        self.subtitle = (cfg.get("subtitle") or "").strip()     # 例: JPOP編
         self._scratch = cairo.Context(cairo.ImageSurface(cairo.FORMAT_ARGB32, 8, 8))
         self._prepare()
 
@@ -100,7 +101,11 @@ class Video:
             s["dur"] = float(s.get("sec") or self.opt["song_sec"])
             t += s["dur"]
         self.t_outro = t
-        self.total = t + self.opt["outro_sec"]
+        self.T0 = max(0.0, float(self.opt.get("title_sec") or 0))   # タイトルカットの長さ（0で無し）
+        self.main_total = t + self.opt["outro_sec"]
+        self.total = self.T0 + self.main_total
+        for s_ in songs:
+            s_["t0_abs"] = s_["t0"] + self.T0
         # 背景データ
         self._prep_base()
         self._base_key = None
@@ -111,7 +116,7 @@ class Video:
     def summary(self):
         """地名の解決結果（Web画面用）"""
         return {
-            "header": self.header_title, "songs_n": len(self.songs), "places_n": self.n_places,
+            "header": self.header_title + (f"　{self.subtitle}" if self.subtitle else ""), "songs_n": len(self.songs), "places_n": self.n_places,
             "seconds": round(self.total, 1),
             "focus": f"{self.focus.name}（{self.focus.source}）" if self.focus else "",
             "songs": [{"title": s["title"], "artist": s.get("artist", ""),
@@ -120,7 +125,7 @@ class Video:
         }
 
     def report(self):
-        print(f"■ {self.header_title}  {len(self.songs)}曲・{self.n_places}地名・{self.total:.1f}秒")
+        print(f"■ {self.header_title}{'　' + self.subtitle if self.subtitle else ''}  {len(self.songs)}曲・{self.n_places}地名・{self.total:.1f}秒")
         if self.focus: print(f"  題名のエリア: {self.focus.name} ({self.focus.source})")
         for i, s in enumerate(self.songs, 1):
             print(f"  {i:02d}. {s['title']} / {s.get('artist','')}")
@@ -536,7 +541,11 @@ class Video:
         size = 54
         while size > 32 and self.tw(ctx, self.header_title, size) > W-96: size -= 2
         self.text(ctx, self.header_title, 48, 84, size, WHITE)
-        self.text(ctx, sub, 48, 134, 28, GREY, bold=False)
+        if self.subtitle:
+            w_ = self.text(ctx, self.subtitle, 48, 134, 28, TEAL)
+            self.text(ctx, sub, 48 + w_ + 24, 134, 28, GREY, bold=False)
+        else:
+            self.text(ctx, sub, 48, 134, 28, GREY, bold=False)
         ctx.set_source_rgba(*TEAL); ctx.rectangle(0, self.HEADER-3, W, 3); ctx.fill()
 
     def credits(self):
@@ -556,6 +565,75 @@ class Video:
         elif f.kind == "point": self.draw_pin(ctx, cam, f, a=0.4*a, scale=0.55, label=False)
 
     def render(self, t, ctx):
+        """t は動画の先頭からの秒。最初の T0 秒はタイトルカット"""
+        T0 = self.T0
+        if T0 <= 0 or t >= T0:
+            return self._render_main(t - T0, ctx)
+        fade = 0.6
+        if t > T0 - fade:          # 地図のイントロへクロスフェード
+            self._render_main(0.0, ctx)
+            ctx.push_group(); self.draw_title_cut(ctx, t); ctx.pop_group_to_source()
+            ctx.paint_with_alpha(1 - ease((t - (T0 - fade)) / fade))
+        else:
+            self.draw_title_cut(ctx, t)
+
+    def draw_title_cut(self, ctx, t):
+        W, H = self.W, self.H
+        # 背景：題名のエリアの地図をうっすら
+        b = _bounds(self.focus) if self.focus else self.all_bounds
+        cam = self._fit(b, 0)
+        cam = (cam[0], cam[1], cam[2] * 0.92, H * 0.47)
+        self._draw_base(ctx, cam)
+        if self.focus:
+            self.draw_area(ctx, cam, self.focus, a=0.55 * ease((t - 0.1) / 0.9), label=False)
+        ctx.set_source_rgba(BG[0], BG[1], BG[2], 0.55); ctx.paint()
+        # 上下のグラデーション
+        for y0, y1, up in ((0, 420, True), (H - 520, H, False)):
+            g = cairo.LinearGradient(0, y0, 0, y1)
+            g.add_color_stop_rgba(0 if up else 1, BG[0], BG[1], BG[2], 0.95)
+            g.add_color_stop_rgba(1 if up else 0, BG[0], BG[1], BG[2], 0.0)
+            ctx.set_source(g); ctx.rectangle(0, y0, W, y1 - y0); ctx.fill()
+        cx = W / 2
+        a1 = ease((t - 0.15) / 0.45); a2 = ease((t - 0.35) / 0.45); a3 = ease((t - 0.75) / 0.4); a4 = ease((t - 1.05) / 0.4)
+        # 小見出し
+        self.text(ctx, "ご当地ソング 地名マップ", cx, 640, 34, TEAL, align="center", alpha=a1, spacing=6)
+        ctx.set_source_rgba(TEAL[0], TEAL[1], TEAL[2], 0.9 * a1)
+        lw = 120 * a1; ctx.rectangle(cx - lw, 668, lw * 2, 3); ctx.fill()
+        # 〇〇の
+        t1 = f"{self.title}の"
+        s1 = 120
+        while s1 > 60 and self.tw(ctx, t1, s1) > W - 120: s1 -= 4
+        self.text(ctx, t1, cx, 800 + (1 - a1) * 30, s1, WHITE, align="center", alpha=a1)
+        # ご当地ソング
+        s2 = 150
+        while s2 > 80 and self.tw(ctx, "ご当地ソング", s2) > W - 100: s2 -= 4
+        self.text(ctx, "ご当地ソング", cx, 800 + s2 + 30 + (1 - a2) * 30, s2, TEAL, align="center", alpha=a2)
+        y = 800 + s2 + 30
+        # サブタイトル（自由入力）
+        if self.subtitle:
+            s3 = 64
+            while s3 > 36 and self.tw(ctx, self.subtitle, s3) > W - 260: s3 -= 2
+            tw = self.tw(ctx, self.subtitle, s3)
+            bw, bh = tw + 80, s3 + 44
+            sc = 0.85 + 0.15 * a3
+            bx, by = cx - bw * sc / 2, y + 70
+            ctx.save(); ctx.translate(cx, by + bh / 2); ctx.scale(sc, sc); ctx.translate(-cx, -(by + bh / 2))
+            _rrect(ctx, cx - bw / 2, by, bw, bh, bh / 2)
+            ctx.set_source_rgba(TEAL[0], TEAL[1], TEAL[2], 0.95 * a3); ctx.fill()
+            self.text(ctx, self.subtitle, cx, by + bh / 2 + s3 * 0.36, s3, DARK, align="center", alpha=a3)
+            ctx.restore()
+            y = by + bh
+        # 曲数
+        M = len(self.songs)
+        self.text(ctx, f"全{M}曲・{self.n_places}地名", cx, y + 130, 40, NOTE, bold=False, align="center", alpha=a4)
+        # 曲数ぶんの点
+        n = min(M, 20); gap = 30; x0 = cx - (n - 1) * gap / 2
+        for i in range(n):
+            ai = ease((t - 1.15 - i * 0.04) / 0.25)
+            if ai <= 0: continue
+            ctx.set_source_rgba(TEAL[0], TEAL[1], TEAL[2], ai); ctx.arc(x0 + i * gap, y + 180, 7, 0, 2 * math.pi); ctx.fill()
+
+    def _render_main(self, t, ctx):
         cam = self.cam_at(t)
         self.draw_base(ctx, cam)
         songs = self.songs
@@ -625,7 +703,7 @@ class Video:
                 if f.kind == "point":
                     self.draw_pin(ctx, cam, f, a=ease((lt-0.5-j*0.1)/0.3), scale=0.75, label=False)
         a = ease((lt-1.3)/0.5)
-        self.draw_center_card(ctx, f"{self.title}のご当地ソング", f"{M}曲・{self.n_places}地名",
+        self.draw_center_card(ctx, f"{self.title}のご当地ソング" + (f"　{self.subtitle}" if self.subtitle else ""), f"{M}曲・{self.n_places}地名",
                               "曲名・歌詞・モチーフに出てくる場所", self.credits(), a=a)
         self.draw_header(ctx, f"{M}曲")
 

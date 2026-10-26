@@ -41,6 +41,8 @@ header.top{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 24px;paddin
 .titleinput input:focus{outline:none}
 .titleinput:focus-within{border-color:var(--accent)}
 .titleinput span{font-size:16px;font-weight:700;color:var(--mute);white-space:nowrap}
+.titleinput.sub input{font-size:15px;font-weight:700;width:12em;color:var(--accent)}
+.tcut{font-size:12px;color:var(--mute);display:flex;align-items:center;gap:4px;white-space:nowrap}
 
 .grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:18px;align-items:start}
 @media (min-width:901px){.grid>section:first-child{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px)}}
@@ -150,6 +152,9 @@ video.player{width:100%;max-width:300px;border-radius:10px;border:1px solid var(
   <div class="titlebox">
     <label for="title">動画タイトル</label>
     <div class="titleinput"><input id="title" placeholder="湘南" autocomplete="off"><span>のご当地ソング</span></div>
+    <div class="titleinput sub"><input id="subtitle" placeholder="サブタイトル（例: JPOP編）" autocomplete="off" list="subs" aria-label="サブタイトル"></div>
+    <datalist id="subs"><option>JPOP編</option><option>アニソン編</option><option>歌謡曲編</option><option>童謡編</option><option>CMソング編</option><option>鉄道編</option><option>演歌編</option><option>サザン編</option></datalist>
+    <label class="tcut"><input type="checkbox" id="titleCut" checked> タイトルカット</label>
   </div>
 </header>
 
@@ -257,7 +262,7 @@ function splitPlaces(s){
 }
 
 /* ---------------- 状態 ---------------- */
-let state = { title:"", credit:"", songSec:5.5, focus:"", songs:[] };   // songs: {uid, sid, title, artist, kind, note, source, sec, places:[{name,type,label,ll}]}
+let state = { title:"", subtitle:"", titleCut:true, credit:"", songSec:5.5, focus:"", songs:[] };   // songs: {uid, sid, title, artist, kind, note, source, sec, places:[{name,type,label,ll}]}
 let uid = 1;
 function fromSong(r){
   return { uid: uid++, sid: r.id, title: r.title, artist: r.artist, kind: KIND[r.kind] || r.kind,
@@ -408,9 +413,12 @@ function parseLL(s){
 function buildConfig(){
   const title = $("title").value.trim();
   const cfg = { title: title || "湘南" };
+  const sub = $("subtitle").value.trim(); if (sub) cfg.subtitle = sub;
   const credit = $("credit").value.trim(); if (credit) cfg.credit = credit;
   const focus = $("focus").value.trim(); if (focus) cfg.focus = focus;
-  const sec = parseFloat($("songSec").value); if (sec && sec !== 5.5) cfg.options = { song_sec: sec };
+  const sec = parseFloat($("songSec").value);
+  const opt = {}; if (sec && sec !== 5.5) opt.song_sec = sec; if (!$("titleCut").checked) opt.title_sec = 0;
+  if (Object.keys(opt).length) cfg.options = opt;
   cfg.songs = state.songs.map(s => {
     const o = { title: s.title, artist: s.artist, kind: s.kind };
     o.places = s.places.filter(p => p.name.trim()).map(p => {
@@ -428,37 +436,39 @@ function buildConfig(){
   return cfg;
 }
 function slug(t){ return (t || "video").replace(/[\\/:*?"<>|\s]+/g, "_"); }
+const fileStem = c => slug((c.title || "") + (c.subtitle || ""));
 function renderOut(){
   const cfg = buildConfig();
   const txt = JSON.stringify(cfg, null, 2);
   $("json").textContent = txt;
-  $("cmd").textContent = `python make_video.py configs/${slug(cfg.title)}.json`;
+  $("cmd").textContent = `python make_video.py configs/${fileStem(cfg)}.json`;
   return txt;
 }
 function changed(redraw){
-  state.title = $("title").value; state.credit = $("credit").value; state.songSec = $("songSec").value; state.focus = $("focus").value;
+  state.title = $("title").value; state.subtitle = $("subtitle").value; state.titleCut = $("titleCut").checked; state.credit = $("credit").value; state.songSec = $("songSec").value; state.focus = $("focus").value;
   save();
   if (redraw) { renderOrder(); renderShelf(); }
   renderOut();
 }
-["title","credit","songSec","focus"].forEach(id => $(id).addEventListener("input", () => changed(false)));
+["title","subtitle","credit","songSec","focus"].forEach(id => $(id).addEventListener("input", () => changed(false)));
+$("titleCut").addEventListener("change", () => changed(false));
 
 function flash(id, msg){ $(id).textContent = msg; clearTimeout(flash[id]); flash[id] = setTimeout(() => $(id).textContent = "", 2600); }
 $("copy").onclick = () => {
   const txt = renderOut();
   const fallback = () => { const r = document.createRange(); r.selectNodeContents($("json")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); flash("toast", "選択しました。⌘C / Ctrl+C でコピーしてください"); };
-  try { navigator.clipboard.writeText(txt).then(() => flash("toast", `コピーしました（configs/${slug(buildConfig().title)}.json に保存）`), fallback); } catch(e){ fallback(); }
+  try { navigator.clipboard.writeText(txt).then(() => flash("toast", `コピーしました（configs/${fileStem(buildConfig())}.json に保存）`), fallback); } catch(e){ fallback(); }
 };
 // ローカルや GitHub Pages で開いたときだけ保存ボタンを出す
 if (location.protocol === "file:" || /localhost|127\.0\.0\.1|github\.io/.test(location.hostname)) {
   $("save").hidden = false;
   $("save").onclick = () => { const txt = renderOut(); const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([txt], {type:"application/json"})); a.download = slug(buildConfig().title) + ".json"; a.click(); };
+    a.href = URL.createObjectURL(new Blob([txt], {type:"application/json"})); a.download = fileStem(buildConfig()) + ".json"; a.click(); };
 }
 $("clearAll").onclick = () => { state.songs = []; changed(true); };
 $("addCustom").onclick = () => { state.songs.push({ uid: uid++, sid: null, title:"新しい曲", artist:"", kind:"歌詞に地名", note:"", source:"", sec:"", places:[{name:"", type:"point", label:"", ll:""}], _open:true }); changed(true); };
 function applyConfig(cfg){
-  $("title").value = cfg.title || ""; $("credit").value = cfg.credit || ""; $("focus").value = typeof cfg.focus === "string" ? cfg.focus : "";
+  $("title").value = cfg.title || ""; $("subtitle").value = cfg.subtitle || ""; $("titleCut").checked = !(cfg.options && cfg.options.title_sec === 0); $("credit").value = cfg.credit || ""; $("focus").value = typeof cfg.focus === "string" ? cfg.focus : "";
   $("songSec").value = (cfg.options && cfg.options.song_sec) || 5.5;
   state.songs = (cfg.songs || []).map(s => ({ uid: uid++, sid: s.song_id || null, title: s.title || "", artist: s.artist || "", kind: s.kind || "",
     note: s.note || "", source: s.source || "", sec: s.sec || "",
@@ -473,7 +483,7 @@ $("importBtn").onclick = () => { try { applyConfig(JSON.parse($("importText").va
 
 /* ---------------- 起動 ---------------- */
 fillSpots();
-if (load()) { $("title").value = state.title || ""; $("credit").value = state.credit || ""; $("songSec").value = state.songSec || 5.5; $("focus").value = state.focus || ""; renderShelf(); renderOrder(); renderOut(); }
+if (load()) { $("title").value = state.title || ""; $("subtitle").value = state.subtitle || ""; $("titleCut").checked = state.titleCut !== false; $("credit").value = state.credit || ""; $("songSec").value = state.songSec || 5.5; $("focus").value = state.focus || ""; renderShelf(); renderOrder(); renderOut(); }
 else applyConfig(SAMPLE);
 
 /* ---------------- スタジオ（app.py で開いたときだけ） ---------------- */

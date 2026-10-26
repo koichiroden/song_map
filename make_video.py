@@ -22,10 +22,10 @@ def main():
     if a.check:
         return
     os.makedirs("out", exist_ok=True)
-    stem = re.sub(r'[\\/:*?"<>|\s]+', "_", cfg.get("title", "video")) or "video"
+    stem = re.sub(r'[\\/:*?"<>|\s]+', "_", cfg.get("title", "video") + (cfg.get("subtitle") or "")) or "video"
     out = a.out or os.path.join("out", f"{stem}_gotouchi.mp4")
     if a.preview is not None:
-        ts = a.preview or [1.5] + [s["t0"] + s["dur"]*0.75 for s in v.songs] + [v.total - 0.5]
+        ts = a.preview or [1.5, v.T0 + 1.5] + [s["t0_abs"] + s["dur"]*0.75 for s in v.songs] + [v.total - 0.5]
         for p in v.write(out, preview=ts): print("  ", p)
         return
     t = time.time()
